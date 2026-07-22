@@ -38,3 +38,17 @@ This mode launches the drone in a custom depot environment, builds a 2D map usin
 
 2. **Wait for Auto-Takeoff**:
    The drone will take off automatically after 8 seconds of initialization. Once airborne, the MRTSP exploration node will take control and autonomously navigate the drone to map the environment.
+
+
+## Manual Exploration using TELEOP:
+
+This mode launches the drone in a custom depot environment, builds a 2D map using the onboard RGBD camera via RTAB-Map, and u can manually explore the areas.
+
+1. **Launch the manual system**:
+   ```bash
+   ros2 launch ardrone_gazebo manual_teleop_drone.launch.py
+   ```
+   *Note: This automatically spawns the drone in `tugbot_depot.sdf`, opens RViz2 with the mapping configuration, and starts an `rqt_image_view` window for the drone's live camera feed.*
+
+2. **Wait for Auto-Takeoff**:
+   The drone will take off automatically after 8 seconds of initialization. After that, you can control the drone using TELEOP.
