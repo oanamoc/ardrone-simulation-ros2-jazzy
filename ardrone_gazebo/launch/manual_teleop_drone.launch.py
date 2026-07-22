@@ -1,16 +1,14 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction, ExecuteProcess
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.substitutions import LaunchConfiguration, Command
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.conditions import IfCondition
 
 def generate_launch_description():
     pkg_ardrone_gazebo = get_package_share_directory('ardrone_gazebo')
-    pkg_nav2_bringup = get_package_share_directory('nav2_bringup')
-    pkg_mrtsp_exploration = get_package_share_directory('mrtsp_exploration_ros2')
     
     # Configure Gazebo environment variables
     models_path = os.path.join(pkg_ardrone_gazebo, 'models')
@@ -24,8 +22,6 @@ def generate_launch_description():
     world = LaunchConfiguration('world_name')
     use_sim_time = LaunchConfiguration('use_sim_time')
     rviz = LaunchConfiguration('rviz')
-
-    nav2_config_path = PathJoinSubstitution([pkg_ardrone_gazebo, 'config', 'navigation.yaml'])
 
     # 1. Gazebo Simulation
     gazebo = IncludeLaunchDescription(
@@ -98,7 +94,7 @@ def generate_launch_description():
         }]
     )
 
-    # 7. Auto Takeoff after 8 seconds (Reliable Node)
+    # 7. Auto Takeoff
     auto_takeoff = Node(
         package='ardrone_gazebo',
         executable='auto_takeoff.py',
@@ -106,63 +102,38 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 8. RTAB-Map Visual SLAM
+    # 8. Visual SLAM (RTAB-Map)
+    rtabmap_parameters = {
+        'frame_id': 'base_link',
+        'subscribe_depth': True,
+        'subscribe_rgb': True,
+        'subscribe_scan': False,
+        'approx_sync': True,
+        'use_sim_time': use_sim_time,
+        'Grid/FromDepth': 'true',
+        'Grid/RangeMax': '5.0',
+        'Grid/RayTracing': 'true',
+        'Reg/Force3DoF': 'true',
+        'Optimizer/Slam2D': 'true',
+        'RGBD/ProximityBySpace': 'false'
+    }
+
     rtabmap_node = Node(
         package='rtabmap_slam',
         executable='rtabmap',
         name='rtabmap',
         output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'subscribe_depth': True,
-            'subscribe_rgb': True,
-            'subscribe_scan': False,
-            'frame_id': 'base_link',
-            'map_frame_id': 'map',
-            'odom_frame_id': 'odom',
-            'publish_tf': True,
-            'approx_sync': True,
-            'queue_size': 30,
-            'Grid/FromDepth': 'true',
-            'Reg/Force3DoF': 'true',
-            'Optimizer/Slam2D': 'true',
-            'Grid/RayTracing': 'true',
-            'Grid/MaxObstacleHeight': '2.0',
-            'Grid/MinGroundHeight': '0.04',
-            'Grid/CellSize': '0.05',
-            'Rtabmap/DetectionRate': '2.0',
-        }],
+        parameters=[rtabmap_parameters],
         remappings=[
             ('rgb/image', '/camera/image'),
             ('depth/image', '/camera/depth_image'),
             ('rgb/camera_info', '/camera/camera_info'),
-            ('grid_map', '/map')
+            ('odom', '/odom')
         ],
-        arguments=['-d']
+        arguments=['--delete_db_on_start']
     )
 
-    # 9. Nav2 Navigation Stack
-    nav2_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_nav2_bringup, 'launch', 'navigation_launch.py')
-        ),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'params_file': nav2_config_path,
-            'use_collision_monitor': 'False'
-        }.items()
-    )
-
-    # 10. MRTSP Frontier Exploration
-    mrtsp_config_path = PathJoinSubstitution([pkg_ardrone_gazebo, 'config', 'mrtsp_params.yaml'])
-    exploration_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_mrtsp_exploration, 'launch', 'explore.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time, 'params_file': mrtsp_config_path}.items()
-    )
-
-    # 11. RViz2
+    # 9. RViz2
     rviz_config_file = os.path.join(pkg_ardrone_gazebo, 'rviz', 'visual_slam.rviz')
     rviz_node = Node(
         package='rviz2',
@@ -174,13 +145,22 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}]
     )
 
-    # 12. RQT Image View
+    # 10. RQT Image View
     rqt_image_view_node = Node(
         package='rqt_image_view',
         executable='rqt_image_view',
         name='rqt_image_view',
         arguments=['/camera/image'],
         condition=IfCondition(rviz)
+    )
+
+    # 11. Teleop Twist Keyboard (deschide un terminal nou)
+    teleop_node = Node(
+        package='teleop_twist_keyboard',
+        executable='teleop_twist_keyboard',
+        name='teleop',
+        output='screen',
+        prefix='gnome-terminal --'
     )
 
     return LaunchDescription([
@@ -195,8 +175,7 @@ def generate_launch_description():
         robot_state_publisher,
         auto_takeoff,
         rtabmap_node,
-        nav2_launch,
-        exploration_launch,
         rviz_node,
-        rqt_image_view_node
+        rqt_image_view_node,
+        teleop_node
     ])

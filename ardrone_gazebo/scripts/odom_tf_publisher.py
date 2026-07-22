@@ -9,19 +9,27 @@ class OdomTFPublisher(Node):
     def __init__(self):
         super().__init__('odom_tf_publisher')
         
-        # Subscribe to odometry
+        # Subscribe to raw odometry
         self.subscription = self.create_subscription(
             Odometry,
-            '/odom',
+            '/odom_raw',
             self.odom_callback,
             10)
+        
+        # Publish corrected odometry
+        self.odom_publisher = self.create_publisher(Odometry, '/odom', 10)
         
         # TF Broadcaster
         self.tf_broadcaster = TransformBroadcaster(self)
         
-        self.get_logger().info('Odom TF Publisher initialized')
+        self.get_logger().info('Odom TF Publisher and Corrector initialized')
 
     def odom_callback(self, msg):
+        # Correct the odometry message frames and republish
+        msg.header.frame_id = 'odom'
+        msg.child_frame_id = 'base_link'
+        self.odom_publisher.publish(msg)
+
         t = TransformStamped()
         
         # Read message content and assign it to corresponding tf variables
